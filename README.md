@@ -269,108 +269,59 @@ Subagent 将在 Claude Code 启动时自动识别，可通过输入 `列出所�
 
 ## 四、工作流图解
 
-```dot
-digraph Workflow {
-    rankdir=TB;
-    splines=ortho;
-    nodesep=0.6;
-    ranksep=0.6;
-    fontname="Helvetica, Arial, sans-serif";
+```mermaid
+graph TD
+    %% 节点定义
+    Start([接收用户需求])
+    Planner[1. project-planner<br/>需求拆解/固化文档]
+    Doc[".ccplan/ 需求文档"]
+    AskTool[2. AskUserQuestions<br/>澄清模糊性]
+    DecisionPlan{3. 需求明晰且<br/>用户确认方案?}
     
-    // 默认节点样式
-    node [shape=box, style="filled,rounded", fontname="Helvetica, Arial, sans-serif", fontsize=10, penwidth=1.5];
-    // 默认边样式
-    edge [fontname="Helvetica, Arial, sans-serif", fontsize=9, color="#555555"];
-
-    // 颜色定义
-    // Start/End
-    node [fillcolor="#E0E0E0", color="#9E9E9E"] Start End;
-    // Subagents Colors
-    node [fillcolor="#E3F2FD", color="#2196F3"] Planner;    // Blue
-    node [fillcolor="#E8F5E9", color="#4CAF50"] Implementer; // Green
-    node [fillcolor="#FFF3E0", color="#FF9800"] Reviewer;    // Orange
-    node [fillcolor="#F3E5F5", color="#9C27B0"] Checker;     // Purple
-    // Tools/Actions
-    node [fillcolor="#FFFFFF", color="#607D8B", shape=note] Doc;
-    node [fillcolor="#FFF8E1", color="#FFC107", shape=component] AskTool;
-    // Decisions
-    node [fillcolor="#FFFFFF", color="#333333", shape=diamond, style="filled"] DecisionPlan DecisionReview DecisionComplete;
-
-    // --- 节点定义 ---
-
-    Start [label="接收用户需求\n(Start)", shape=ellipse];
-
-    subgraph cluster_planning {
-        label="Phase 1: 需求规划与分析";
-        style=dashed;
-        color="#BDBDBD";
-        fontcolor="#757575";
-
-        Planner [label="1. project-planner Subagent\n(拆解需求/成本地文档)\n[Auggie/Codex/Gemini]"];
-        Doc [label="需求文档\n(.ccplan/*.md)"];
-        AskTool [label="2. Tool: AskUserQuestions\n(解决模糊性)"];
-        DecisionPlan [label="3. 需求是否明晰?\n用户确认方案(Y)?"];
-    }
-
-    subgraph cluster_execution {
-        label="Phase 2: 编码与审查 (迭代)";
-        style=dashed;
-        color="#BDBDBD";
-        fontcolor="#757575";
-
-        Implementer [label="4. code-implementer Subagents\n(多Agent并行执行)\n[强制阅读需求文档]", shape=folder];
-        Reviewer [label="5. code-reviewer Subagent\n(多视角审计/Diff Review)\n[Claude/Codex/Gemini]"];
-        DecisionReview [label="6. Review通过?\n(LGTM ✅)"];
-    }
-
-    subgraph cluster_verification {
-        label="Phase 3: 完整性检查";
-        style=dashed;
-        color="#BDBDBD";
-        fontcolor="#757575";
-
-        Checker [label="7. plan-completion-checker\n(对比文档检查完成度)"];
-        DecisionComplete [label="8. 所有需求完成?\n(Full Coverage)"];
-    }
-
-    End [label="最终评判 & 报告\n(提示需用户测试的项目)", shape=ellipse];
-
-    // --- 连线逻辑 ---
-
-    // 1. 规划阶段
-    Start -> Planner;
-    Planner -> Doc [style=dotted, label="生成"];
-    Doc -> Planner [style=dotted, label="上下文"];
+    Implementer[4. code-implementer<br/>并行执行编码任务]
+    Reviewer[5. code-reviewer<br/>多视角代码审计]
+    DecisionReview{6. 是否收到<br/>LGTM ✅?}
     
-    Planner -> DecisionPlan;
+    Checker[7. plan-completion-checker<br/>完整性检阅]
+    DecisionComplete{8. 所有计划内容<br/>均已完成?}
     
-    // 循环 1: 需求澄清
-    DecisionPlan -> AskTool [label="N: 模糊/未确认"];
-    AskTool -> Planner [label="Resume w/ Info\n(同ID多轮对话)"];
+    End([最终评判与报告])
 
-    // 2. 进入实施
-    DecisionPlan -> Implementer [label="Y: Proceed (加粗)", penwidth=2.0];
-    Doc -> Implementer [style=dotted, label="作为参考输入"];
-
-    // 3. 实施与审查循环
-    Implementer -> Reviewer [label="提交代码"];
-    Reviewer -> DecisionReview;
+    %% 流程逻辑
+    Start --> Planner
+    Planner --> Doc
+    Planner --> DecisionPlan
     
-    // 循环 2: 代码修正
-    DecisionReview -> Implementer [label="N: 有问题/建议", color="#D32F2F"];
+    %% 循环 1: 需求确认
+    DecisionPlan -- "N (模糊)" --> AskTool
+    AskTool -- "Resume ID" --> Planner
     
-    // 4. 完整性检查
-    DecisionReview -> Checker [label="Y: LGTM ✅", color="#388E3C"];
-    Checker -> DecisionComplete;
+    %% 进入开发
+    DecisionPlan -- "**Shall I proceed? (Y)**" --> Implementer
+    Doc -.-> Implementer
 
-    // 循环 3: 补充未完成的需求 (回到实施阶段)
-    DecisionComplete -> Implementer [label="N: 部分完成/未达标\n(迭代执行 4~7)", color="#D32F2F"];
+    %% 循环 2: 开发审计
+    Implementer --> Reviewer
+    Reviewer --> DecisionReview
+    DecisionReview -- "N (修正)" --> Implementer
+    
+    %% 循环 3: 整体闭环
+    DecisionReview -- "Y (LGTM)" --> Checker
+    Checker --> DecisionComplete
+    DecisionComplete -- "N (迭代 4~7)" --> Implementer
+    
+    %% 结束
+    DecisionComplete -- "Y (完成)" --> End
 
-    // 5. 结束
-    DecisionComplete -> End [label="Y: 满分答卷", penwidth=2.0, color="#388E3C"];
-}
-
+    %% 样式
+    style Start fill:#f9f,stroke:#333
+    style End fill:#f9f,stroke:#333
+    style DecisionPlan fill:#fff,stroke:#333
+    style DecisionReview fill:#fff,stroke:#333
+    style DecisionComplete fill:#fff,stroke:#333
 ```
+
+
 
 ---
 
